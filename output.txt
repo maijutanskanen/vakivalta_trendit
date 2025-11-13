@@ -1,0 +1,2117 @@
+
+> library(pxweb)
+
+> library(dplyr)
+
+> library(stringi)
+
+> library(stringr)
+
+> library(tidyverse)
+
+> library(tidyr)
+
+> library(broom)
+
+> library(dplyr)
+
+> library(zoo)
+
+> library(patchwork)
+
+> library(segmented)
+
+> ####AINEISTON HAKEMINEN JA MUODOSTAMINEN
+> 
+> set.seed(211)
+
+> pxweb_query_list <-
++   list("Vuosi" = c("2000", "2001", "2002", "2003", "2004", "2005", "2006",
++                    "2007", "2008", "2009", "2010" .... [TRUNCATED] 
+
+> # Download data
+> px_data <-
++   pxweb_get(url = "https://statfin.stat.fi/PXWeb/api/v1/fi/StatFin/rpk/statfin_rpk_pxt_13h5.px",
++             query  .... [TRUNCATED] 
+
+> # Convert to data.frame
+> data <- as.data.frame(px_data, column.name.type = "text",
++                       variable.value.type = "text")
+
+> #TÄSSÄ SIIVOTAAN DATAA JA JAETAAN ALUKSI 15-20-vuotiaisiin & 21-29-vuotiaisiin
+> 
+> data <- dplyr::select(data, -"Pääasiallinen toiminta", -"Epäilly ..." ... [TRUNCATED] 
+
+> data <- data %>%
++   rename(epaillyt = `Selvitettyihin rikoksiin syylliseksi epäillyt`,
++          nimiklkm = `Selvitettyihin rikoksiin syylliseksi  .... [TRUNCATED] 
+
+> data <- data %>%
++   mutate(rikryhm = ifelse(rikryhm == "1201 Henkirikokset  21:1-3,34a:1 yhteensä", "hr", rikryhm),
++          rikryhm = ifelse(rik .... [TRUNCATED] 
+
+> nuorimmat <- data %>% filter(ika == "15 - 17" | ika == "18 - 20")
+
+> nuorimmat <- nuorimmat %>%
++   group_by(vuosi, rikryhm) %>%
++   summarize(epaillyt = sum(epaillyt),
++             nimiklkm = sum(nimiklkm),
++        .... [TRUNCATED] 
+
+> nuorimmat$ika <- "15-20"
+
+> vanhemmat <- data %>% filter(ika == "21 - 24" | ika == "25 - 29")
+
+> vanhemmat <- vanhemmat %>%
++   group_by(vuosi, rikryhm) %>%
++   summarize(epaillyt = sum(epaillyt),
++             nimiklkm = sum(nimiklkm),
++        .... [TRUNCATED] 
+
+> vanhemmat$ika <- "21-29"
+
+> #LADATAAN IKÄRYHMIEN KOOT TK:N RAJAPINNASTA
+> 
+> pxweb_query_list <-
++   list("Vuosi" = c("2000", "2001", "2002", "2003", "2004", "2005", "2006",
++  .... [TRUNCATED] 
+
+> # Download data
+> px_data <-
++   pxweb_get(url = "https://statfin.stat.fi/PXWeb/api/v1/fi/StatFin/vaerak/statfin_vaerak_pxt_11rd.px",
++              .... [TRUNCATED] 
+
+> # Convert to data.frame
+> vaesto <- as.data.frame(px_data, column.name.type = "text", variable.value.type = "text")
+
+> vaesto <- vaesto %>%
++   pivot_wider(names_from = Vuosi, values_from = `Väestö 31.12.`)
+
+> vaesto_n <- vaesto %>% filter(Ikä  < 21)
+
+> vaesto_n <- vaesto_n %>% summarize(across(starts_with("20"), sum, na.rm = TRUE))
+
+> vaesto_n <- vaesto_n %>% pivot_longer(cols = everything(),
++                                       names_to = "vuosi")
+
+> vaesto_n$ika <- "15-20"
+
+> vaesto_v <- vaesto %>% filter(Ikä > 20)
+
+> vaesto_v <- vaesto_v %>% summarize(across(starts_with("20"), sum, na.rm = TRUE))
+
+> vaesto_v <- vaesto_v %>% pivot_longer(cols = everything(),
++                                       names_to = "vuosi")
+
+> vaesto_v$ika <- "21-29"
+
+> vaesto <- rbind(vaesto_n, vaesto_v)
+
+> #TÄSSÄ YHDISTETÄÄN RIKOSTIEDOT JA TIEDOT IKÄRYHMÄN KOOSTA + LASKETAAN RIKOKSET 100K/KOHDEN
+> 
+> yhdistetty_v <- vanhemmat %>%
++   left_join(vaesto,  .... [TRUNCATED] 
+
+> yhdistetty_v <- yhdistetty_v %>%
++   rowwise() %>%
++   mutate(epaillyt21 = epaillyt / value * 100000,
++          nimiklkm21 = nimiklkm / value * 100 .... [TRUNCATED] 
+
+> yhdistetty_v <- yhdistetty_v %>%
++   pivot_wider(names_from = rikryhm,
++               values_from = c(epaillyt21, nimiklkm21, torkein21))
+
+> yhdistetty_v <- yhdistetty_v %>%
++   mutate(across(everything(), as.numeric))
+
+> yhdistetty_v <- yhdistetty_v %>%
++   group_by(vuosi) %>%
++   summarize(across(everything(), max, na.rm = TRUE))
+
+> yhdistetty_v <- dplyr::select(yhdistetty_v, -"ika", -"epaillyt",
++                               -"nimiklkm", -"torkein", -"value")
+
+> yhdistetty_n <- nuorimmat %>%
++   left_join(vaesto, join_by("ika", "vuosi"))
+
+> yhdistetty_n <- yhdistetty_n %>%
++   rowwise() %>%
++   mutate(epaillyt15 = epaillyt / value * 100000,
++          nimiklkm15 = nimiklkm / value * 100 .... [TRUNCATED] 
+
+> yhdistetty_n <- yhdistetty_n %>%
++   pivot_wider(names_from = rikryhm,
++               values_from = c(epaillyt15, nimiklkm15, torkein15))
+
+> yhdistetty_n <- yhdistetty_n %>%
++ 
++   mutate(across(everything(), as.numeric))
+
+> yhdistetty_n <- yhdistetty_n %>%
++   group_by(vuosi) %>%
++   summarize(across(everything(), max, na.rm = TRUE))
+
+> yhdistetty_n <- dplyr::select(yhdistetty_n, -"ika", -"epaillyt",
++                               -"nimiklkm", -"torkein", -"value")
+
+> #TÄSSÄ VIIMEIN IKÄLUOKKIEN DATAT YHTEEN
+> 
+> data <- yhdistetty_n %>%
++   left_join(yhdistetty_v, by = "vuosi")
+
+> rm(vaesto_n, vaesto_v, vanhemmat, nuorimmat, vaesto, yhdistetty_n, yhdistetty_v)
+
+> library(segmented)
+
+> ##ANALYYSI
+> 
+> ###TEKIJÄT 15-20
+> #Valitaan analysoitavat muuttujat
+> 
+> dep_vars <- c("epaillyt15_hr", "epaillyt15_hry", "epaillyt15_tpp",
++       .... [TRUNCATED] 
+
+> # Otsikot kuvioon
+> row_titles <- c("Rikokset",
++                 "Rikosnimikkeet",
++                 "Törkeimmän mukaan")
+
+> col_titles <- c("Henkirikokset", "Henkirikoksen yritykset", "Törkeät pahoinpitelyt")
+
+> # Kuvion pohja
+> num_vars <- length(dep_vars)
+
+> ncols <- 3  # Sarakkeita per rivi
+
+> nrows <- ceiling(num_vars / ncols)  # Rivien lukumäärä
+
+> par(mfrow = c(nrows, ncols), mar = c(4, 4, 2, 1), oma = c(2, 7, 4, 2))  # Marginaalit
+
+> # Looppi kaikille valituille muuttujille:
+> for (i in seq_along(dep_vars)) {
++   dv <- dep_vars[i]
++ 
++ 
++   formula_str <- as.formula(paste(dv, "~  ..." ... [TRUNCATED] 
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+(search truncated at 5 breakpoints due to increasing values of BIC) 
+
+BIC to detect no. of breakpoints:
+        0         1         2         3         5         7 
+ 95.19683  96.90987 100.69054 106.72857 107.72857 108.72857 
+
+No. of selected breakpoints:  0  
+[1] "Vastemuuttuja: epaillyt15_hr"
+
+Call:
+lm(formula = formula_str, data = data)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-1.9347 -0.9022 -0.1289  0.7131  3.5842 
+
+Coefficients:
+             Estimate Std. Error t value Pr(>|t|)  
+(Intercept) 200.06719   77.89700   2.568   0.0172 *
+vuosi        -0.09802    0.03872  -2.532   0.0186 *
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 1.396 on 23 degrees of freedom
+Multiple R-squared:  0.2179,	Adjusted R-squared:  0.1839 
+F-statistic:  6.41 on 1 and 23 DF,  p-value: 0.01864
+
+                 2.5 %       97.5 %
+(Intercept) 47.3918636 352.74250912
+vuosi       -0.1738992  -0.02213542
+[1] "Error in grep(nomeZ[i], ogg$nameUV$U) : invalid 'pattern' argument\n"
+attr(,"class")
+[1] "try-error"
+attr(,"condition")
+<simpleError in grep(nomeZ[i], ogg$nameUV$U): invalid 'pattern' argument>
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        5        7 
+147.6949 142.6660 149.0818 147.2044 148.2044 149.2044 
+
+No. of selected breakpoints: 1  
+[1] "Vastemuuttuja: epaillyt15_hry"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, npsi = 1, control = control1)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2014.577  1.966
+
+Coefficients of the linear terms:
+            Estimate Std. Error t value Pr(>|t|)
+(Intercept) 556.3286   398.0883   1.398    0.177
+vuosi        -0.2714     0.1983  -1.368    0.186
+U1.vuosi      1.3775     0.4158   3.313       NA
+
+Residual standard error: 3.319 on 21 degrees of freedom
+Multiple R-Squared: 0.4516,  Adjusted R-squared: 0.3733 
+
+Convergence attained in 2 iterations (rel. change 2.2698e-10)
+                   2.5 %      97.5 %
+(Intercept) -223.9101013 1336.567281
+vuosi         -0.6601236    0.117392
+U1.vuosi       0.5625826    2.192389
+psi1.vuosi    -3.8524990    3.852499
+$vuosi
+           Est. St.Err. t value CI(95%).l CI(95%).u
+slope1 -0.27137 0.19835 -1.3681  -0.68386   0.14112
+slope2  1.10610 0.36541  3.0270   0.34620   1.86600
+
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        5 
+216.8361 203.9556 191.0076 197.2788 203.2514 208.5792 
+
+No. of selected breakpoints: 2  
+[1] "Vastemuuttuja: epaillyt15_tpp"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, psi = startpsi[[i - 1]], 
+    control = control1)
+
+Estimated Break-Point(s):
+               Est. St.Err
+psi1.vuosi 2006.00  1.134
+psi2.vuosi 2017.48  0.634
+
+Coefficients of the linear terms:
+             Estimate Std. Error t value Pr(>|t|)
+(Intercept) -4116.239   3861.612  -1.066    0.300
+vuosi           2.115      1.928   1.097    0.287
+U1.vuosi       -7.668      2.043  -3.753       NA
+U2.vuosi       12.204      1.667   7.320       NA
+
+Residual standard error: 8.067 on 19 degrees of freedom
+Multiple R-Squared: 0.8839,  Adjusted R-squared: 0.8534 
+
+Convergence attained in 5 iterations (rel. change 7.8862e-06)
+                    2.5 %      97.5 %
+(Intercept) -11684.858905 3452.380688
+vuosi           -1.665083    5.894085
+U1.vuosi       -11.672400   -3.664042
+U2.vuosi         8.936308   15.471285
+psi1.vuosi      -2.222130    2.222130
+psi2.vuosi      -1.241811    1.241811
+$vuosi
+          Est. St.Err. t value CI(95%).l CI(95%).u
+slope1  2.1145  1.9284  1.0965   -1.9217    6.1507
+slope2 -5.5537  0.6746 -8.2326   -6.9657   -4.1418
+slope3  6.6501  1.5245  4.3621    3.4592    9.8410
+
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+        0         1         2         3         5         6 
+ 94.45709  94.19781 103.56585 103.75308  95.54514  96.54514 
+
+No. of selected breakpoints: 1  
+[1] "Vastemuuttuja: nimiklkm15_hr"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, npsi = 1, control = control1)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2005.212  1.881
+
+Coefficients of the linear terms:
+             Estimate Std. Error t value Pr(>|t|)  
+(Intercept) 1235.9415   602.6631   2.051   0.0530 .
+vuosi         -0.6151     0.3010  -2.044   0.0537 .
+U1.vuosi       0.6015     0.3055   1.969       NA  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 1.259 on 21 degrees of freedom
+Multiple R-Squared: 0.3927,  Adjusted R-squared: 0.306 
+
+Convergence attained in 4 iterations (rel. change 5.605e-12)
+                   2.5 %        97.5 %
+(Intercept) 54.743587094 2417.13947397
+vuosi       -1.204996190   -0.02527333
+U1.vuosi     0.002668264    1.20036400
+psi1.vuosi  -3.686744347    3.68674435
+$vuosi
+            Est.  St.Err.  t value CI(95%).l CI(95%).u
+slope1 -0.615130 0.300960 -2.04390  -1.24100  0.010736
+slope2 -0.013619 0.052733 -0.25826  -0.12328  0.096046
+
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        5 
+145.0688 138.7263 145.1307 150.5692 157.4650 158.4650 
+
+No. of selected breakpoints: 1  
+[1] "Vastemuuttuja: nimiklkm15_hry"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, npsi = 1, control = control1)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2014.238  1.902
+
+Coefficients of the linear terms:
+            Estimate Std. Error t value Pr(>|t|)
+(Intercept) 552.8826   367.9252   1.503    0.148
+vuosi        -0.2699     0.1833  -1.472    0.156
+U1.vuosi      1.3394     0.3843   3.486       NA
+
+Residual standard error: 3.068 on 21 degrees of freedom
+Multiple R-Squared: 0.4977,  Adjusted R-squared: 0.4259 
+
+Convergence attained in 2 iterations (rel. change 9.0243e-09)
+                   2.5 %       97.5 %
+(Intercept) -168.2375675 1.274003e+03
+vuosi         -0.6291875 8.941585e-02
+U1.vuosi       0.5862527 2.092569e+00
+psi1.vuosi    -3.7270419 3.727042e+00
+$vuosi
+           Est. St.Err. t value CI(95%).l CI(95%).u
+slope1 -0.26989 0.18332 -1.4722  -0.65112   0.11135
+slope2  1.06950 0.33772  3.1669   0.36719   1.77190
+
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        5 
+213.3380 195.7915 189.8050 192.2218 195.3467 200.4001 
+
+No. of selected breakpoints: 2  
+[1] "Vastemuuttuja: nimiklkm15_tpp"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, psi = startpsi[[i - 1]], 
+    control = control1)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2005.448  1.337
+psi2.vuosi 2018.001  0.724
+
+Coefficients of the linear terms:
+             Estimate Std. Error t value Pr(>|t|)
+(Intercept) -2507.022   3769.846  -0.665    0.514
+vuosi           1.310      1.883   0.696    0.495
+U1.vuosi       -5.821      1.971  -2.953       NA
+U2.vuosi       11.627      1.971   5.899       NA
+
+Residual standard error: 7.875 on 19 degrees of freedom
+Multiple R-Squared: 0.8689,  Adjusted R-squared: 0.8345 
+
+Convergence attained in 3 iterations (rel. change 9.3009e-11)
+                   2.5 %      97.5 %
+(Intercept) -9895.784290 4881.739575
+vuosi          -2.380069    4.999466
+U1.vuosi       -9.683920   -1.957741
+U2.vuosi        7.764140   15.490319
+psi1.vuosi     -2.619752    2.619752
+psi2.vuosi     -1.418084    1.418084
+$vuosi
+          Est. St.Err. t value CI(95%).l CI(95%).u
+slope1  1.3097 1.88260  0.6957   -2.6306    5.2500
+slope2 -4.5111 0.58376 -7.7277   -5.7330   -3.2893
+slope3  7.1161 1.88260  3.7800    3.1758   11.0560
+
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+(search truncated at 5 breakpoints due to increasing values of BIC) 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        5        7 
+85.27197 85.32470 87.67433 93.31369 94.31369 95.31369 
+
+No. of selected breakpoints:  0  
+[1] "Vastemuuttuja: torkein15_hr"
+
+Call:
+lm(formula = formula_str, data = data)
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-1.43812 -0.74673 -0.01036  0.39841  2.62334 
+
+Coefficients:
+             Estimate Std. Error t value Pr(>|t|)  
+(Intercept) 142.16423   63.87259   2.226   0.0361 *
+vuosi        -0.06938    0.03175  -2.186   0.0393 *
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 1.145 on 23 degrees of freedom
+Multiple R-squared:  0.172,	Adjusted R-squared:  0.136 
+F-statistic: 4.777 on 1 and 23 DF,  p-value: 0.03929
+
+                 2.5 %        97.5 %
+(Intercept) 16.9762613 267.352197476
+vuosi       -0.1316019  -0.007161424
+[1] "Error in grep(nomeZ[i], ogg$nameUV$U) : invalid 'pattern' argument\n"
+attr(,"class")
+[1] "try-error"
+attr(,"condition")
+<simpleError in grep(nomeZ[i], ogg$nameUV$U): invalid 'pattern' argument>
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        5        6 
+120.9068 117.7501 121.2997 113.3825 114.3825 124.8296 
+
+No. of selected breakpoints: 3  
+[1] "Vastemuuttuja: torkein15_hry"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, psi = start.ora, control = control)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2008.632  1.761
+psi2.vuosi 2014.248  0.847
+psi3.vuosi 2021.000  0.983
+
+Coefficients of the linear terms:
+              Estimate Std. Error t value Pr(>|t|)
+(Intercept) -138.15646  410.70485  -0.336    0.741
+vuosi          0.07336    0.20494   0.358    0.725
+U1.vuosi      -0.94761    0.43128  -2.197       NA
+U2.vuosi       2.09146    0.48374   4.323       NA
+U3.vuosi      -2.69983    1.16191  -2.324       NA
+
+Residual standard error: 1.587 on 17 degrees of freedom
+Multiple R-Squared: 0.6632,  Adjusted R-squared: 0.5245 
+
+Boot restarting based on 9 samples. Last fit:
+Convergence attained in 6 iterations (rel. change -2.0511e-07)
+                   2.5 %      97.5 %
+(Intercept) -943.1231770 666.8102596
+vuosi         -0.3283231   0.4750362
+U1.vuosi      -1.7929109  -0.1023078
+U2.vuosi       1.1433391   3.0395783
+U3.vuosi      -4.9771396  -0.4225203
+psi1.vuosi    -3.4522005   3.4522005
+psi2.vuosi    -1.6591430   1.6591430
+psi3.vuosi    -1.9275563   1.9275563
+$vuosi
+            Est. St.Err.  t value CI(95%).l CI(95%).u
+slope1  0.073357 0.20494  0.35794  -0.35903  0.505750
+slope2 -0.874250 0.37948 -2.30380  -1.67490 -0.073621
+slope3  1.217200 0.30000  4.05730   0.58425  1.850200
+slope4 -1.482600 1.12250 -1.32080  -3.85090  0.885680
+
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        5 
+201.3701 189.7964 176.9028 183.2845 181.7847 182.7847 
+
+No. of selected breakpoints: 2  
+[1] "Vastemuuttuja: torkein15_tpp"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, psi = startpsi[[i - 1]], 
+    control = control1)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2007.839  1.067
+psi2.vuosi 2016.518  0.652
+
+Coefficients of the linear terms:
+             Estimate Std. Error t value Pr(>|t|)
+(Intercept) -296.5333  1880.9072  -0.158    0.876
+vuosi          0.1963     0.9388   0.209    0.837
+U1.vuosi      -5.6224     1.2241  -4.593       NA
+U2.vuosi       9.1160     1.2241   7.447       NA
+
+Residual standard error: 6.084 on 19 degrees of freedom
+Multiple R-Squared: 0.9027,  Adjusted R-squared: 0.8771 
+
+Convergence attained in 4 iterations (rel. change 4.7333e-11)
+                   2.5 %      97.5 %
+(Intercept) -3983.043647 3389.977116
+vuosi          -1.643754    2.036313
+U1.vuosi       -8.021490   -3.223268
+U2.vuosi        6.716936   11.515157
+psi1.vuosi     -2.092060    2.092060
+psi2.vuosi     -1.277570    1.277570
+$vuosi
+           Est. St.Err.  t value CI(95%).l CI(95%).u
+slope1  0.19628 0.93881  0.20907   -1.7687    2.1612
+slope2 -5.42610 0.78546 -6.90810   -7.0701   -3.7821
+slope3  3.68990 0.93881  3.93050    1.7250    5.6549
+
+
+> ###TEKIJÄT 21-29
+> #Valitaan analysoitavat muuttujat
+> 
+> dep_vars <- c("epaillyt21_hr", "epaillyt21_hry", "epaillyt21_tpp",
++               "nimikl ..." ... [TRUNCATED] 
+
+> # Otsikot kuvioon
+> row_titles <- c("Rikokset",
++                 "Rikosnimikkeet",
++                 "Törkeimmän mukaan")
+
+> col_titles <- c("Henkirikokset", "Henkirikoksen yritykset", "Törkeät pahoinpitelyt")
+
+> # Kuvion pohja
+> num_vars <- length(dep_vars)
+
+> ncols <- 3  # Sarakkeita per rivi
+
+> nrows <- ceiling(num_vars / ncols)  # Rivien lukumäärä
+
+> par(mfrow = c(nrows, ncols), mar = c(4, 4, 2, 1), oma = c(2, 7, 4, 2))  # Marginaalit
+
+> # Looppi kaikille valituille muuttujille:
+> for (i in seq_along(dep_vars)) {
++   dv <- dep_vars[i]
++ 
++ 
++   formula_str <- as.formula(paste(dv, "~  ..." ... [TRUNCATED] 
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        5 
+142.0722 147.2852 153.0242 152.9703 159.3884 158.4751 
+
+No. of selected breakpoints:  0  
+[1] "Vastemuuttuja: epaillyt21_hr"
+
+Call:
+lm(formula = formula_str, data = data)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-2.9583 -1.6401 -0.6760  0.5151 15.2458 
+
+Coefficients:
+             Estimate Std. Error t value Pr(>|t|)
+(Intercept) 115.32937  198.91845   0.580    0.568
+vuosi        -0.05463    0.09887  -0.553    0.586
+
+Residual standard error: 3.565 on 23 degrees of freedom
+Multiple R-squared:  0.0131,	Adjusted R-squared:  -0.02981 
+F-statistic: 0.3054 on 1 and 23 DF,  p-value: 0.5859
+
+                   2.5 %      97.5 %
+(Intercept) -274.5436269 505.2023658
+vuosi         -0.2484054   0.1391398
+[1] "Error in grep(nomeZ[i], ogg$nameUV$U) : invalid 'pattern' argument\n"
+attr(,"class")
+[1] "try-error"
+attr(,"condition")
+<simpleError in grep(nomeZ[i], ogg$nameUV$U): invalid 'pattern' argument>
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+(search truncated at 5 breakpoints due to increasing values of BIC) 
+
+BIC to detect no. of breakpoints:
+       0        1        2        4        6        8 
+149.8320 152.8679 155.7250 157.3463 158.3463 159.3463 
+
+No. of selected breakpoints:  0  
+[1] "Vastemuuttuja: epaillyt21_hry"
+
+Call:
+lm(formula = formula_str, data = data)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-6.3570 -2.4026 -0.7136  1.9350  9.4379 
+
+Coefficients:
+             Estimate Std. Error t value Pr(>|t|)
+(Intercept) -196.6054   232.3142  -0.846    0.406
+vuosi          0.1068     0.1155   0.925    0.365
+
+Residual standard error: 4.163 on 23 degrees of freedom
+Multiple R-squared:  0.03587,	Adjusted R-squared:  -0.006046 
+F-statistic: 0.8558 on 1 and 23 DF,  p-value: 0.3645
+
+                   2.5 %      97.5 %
+(Intercept) -651.9328525 258.7220536
+vuosi         -0.1194919   0.3331169
+[1] "Error in grep(nomeZ[i], ogg$nameUV$U) : invalid 'pattern' argument\n"
+attr(,"class")
+[1] "try-error"
+attr(,"condition")
+<simpleError in grep(nomeZ[i], ogg$nameUV$U): invalid 'pattern' argument>
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        5 
+215.7378 209.0567 200.1436 201.4164 205.3687 210.7611 
+
+No. of selected breakpoints: 2  
+[1] "Vastemuuttuja: epaillyt21_tpp"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, psi = startpsi[[i - 1]], 
+    control = control1)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2004.424  0.660
+psi2.vuosi 2015.764  1.436
+
+Coefficients of the linear terms:
+              Estimate Std. Error t value Pr(>|t|)   
+(Intercept) -21833.518   6131.034  -3.561  0.00208 **
+vuosi           10.961      3.062   3.579  0.00200 **
+U1.vuosi       -15.815      3.199  -4.944       NA   
+U2.vuosi         6.045      1.554   3.889       NA   
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 9.684 on 19 degrees of freedom
+Multiple R-Squared: 0.7959,  Adjusted R-squared: 0.7421 
+
+Convergence attained in 3 iterations (rel. change 5.4016e-11)
+                    2.5 %       97.5 %
+(Intercept) -33850.124791 -9816.912031
+vuosi            4.959089    16.963688
+U1.vuosi       -22.084040    -9.545645
+U2.vuosi         2.998894     9.091459
+psi1.vuosi      -1.293279     1.293279
+psi2.vuosi      -2.813853     2.813853
+$vuosi
+          Est. St.Err.  t value CI(95%).l CI(95%).u
+slope1 10.9610 3.06250  3.57930    4.5516   17.3710
+slope2 -4.8535 0.92336 -5.25630   -6.7861   -2.9208
+slope3  1.1917 1.25020  0.95319   -1.4251    3.8085
+
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+        0         1         2         3         4         5 
+ 89.32351  94.71629  90.52261  94.64554 100.15894 108.22914 
+
+No. of selected breakpoints:  0  
+[1] "Vastemuuttuja: nimiklkm21_hr"
+
+Call:
+lm(formula = formula_str, data = data)
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-2.69831 -0.80376 -0.05935  0.71276  2.36704 
+
+Coefficients:
+             Estimate Std. Error t value Pr(>|t|)    
+(Intercept) 320.71144   69.26371   4.630 0.000117 ***
+vuosi        -0.15707    0.03443  -4.563 0.000138 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 1.241 on 23 degrees of freedom
+Multiple R-squared:  0.4751,	Adjusted R-squared:  0.4523 
+F-statistic: 20.82 on 1 and 23 DF,  p-value: 0.0001384
+
+                  2.5 %       97.5 %
+(Intercept) 184.9570508 456.46582333
+vuosi        -0.2245447  -0.08960083
+[1] "Error in grep(nomeZ[i], ogg$nameUV$U) : invalid 'pattern' argument\n"
+attr(,"class")
+[1] "try-error"
+attr(,"condition")
+<simpleError in grep(nomeZ[i], ogg$nameUV$U): invalid 'pattern' argument>
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        3        4        6        8 
+143.8670 145.7900 154.9172 154.0470 155.0470 156.0470 
+
+No. of selected breakpoints:  0  
+[1] "Vastemuuttuja: nimiklkm21_hry"
+
+Call:
+lm(formula = formula_str, data = data)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-6.4926 -2.0518 -0.6777  0.7828  8.8782 
+
+Coefficients:
+             Estimate Std. Error t value Pr(>|t|)
+(Intercept) -217.9526   206.1885  -1.057    0.301
+vuosi          0.1171     0.1025   1.143    0.265
+
+Residual standard error: 3.695 on 23 degrees of freedom
+Multiple R-squared:  0.05372,	Adjusted R-squared:  0.01258 
+F-statistic: 1.306 on 1 and 23 DF,  p-value: 0.2649
+
+                    2.5 %      97.5 %
+(Intercept) -622.07457915 186.1693274
+vuosi         -0.08375238   0.3179567
+[1] "Error in grep(nomeZ[i], ogg$nameUV$U) : invalid 'pattern' argument\n"
+attr(,"class")
+[1] "try-error"
+attr(,"condition")
+<simpleError in grep(nomeZ[i], ogg$nameUV$U): invalid 'pattern' argument>
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        5 
+214.2956 207.7147 200.0285 200.2602 205.0202 210.8063 
+
+No. of selected breakpoints: 2  
+[1] "Vastemuuttuja: nimiklkm21_tpp"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, psi = startpsi[[i - 1]], 
+    control = control1)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2004.519  0.714
+psi2.vuosi 2015.947  1.492
+
+Coefficients of the linear terms:
+              Estimate Std. Error t value Pr(>|t|)   
+(Intercept) -20472.882   6116.941  -3.347  0.00339 **
+vuosi           10.280      3.055   3.365  0.00326 **
+U1.vuosi       -14.822      3.191  -4.645       NA   
+U2.vuosi         5.781      1.551   3.728       NA   
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 9.662 on 19 degrees of freedom
+Multiple R-Squared: 0.7756,  Adjusted R-squared: 0.7165 
+
+Convergence attained in 4 iterations (rel. change 4.555e-11)
+                    2.5 %       97.5 %
+(Intercept) -32461.867039 -8483.897085
+vuosi            4.291624    16.268629
+U1.vuosi       -21.076955    -8.567381
+U2.vuosi         2.741846     8.820406
+psi1.vuosi      -1.398698     1.398698
+psi2.vuosi      -2.924950     2.924950
+$vuosi
+          Est. St.Err.  t value CI(95%).l CI(95%).u
+slope1 10.2800 3.05540  3.36460    3.8851   16.6750
+slope2 -4.5420 0.92124 -4.93030   -6.4702   -2.6139
+slope3  1.2391 1.24740  0.99336   -1.3717    3.8499
+
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        5 
+85.68828 90.51955 89.97176 87.00446 93.80254 94.80254 
+
+No. of selected breakpoints:  0  
+[1] "Vastemuuttuja: torkein21_hr"
+
+Call:
+lm(formula = formula_str, data = data)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-2.4418 -0.6544 -0.1120  0.8119  2.4855 
+
+Coefficients:
+             Estimate Std. Error t value Pr(>|t|)    
+(Intercept) 275.44534   64.40663   4.277 0.000283 ***
+vuosi        -0.13474    0.03201  -4.209 0.000334 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 1.154 on 23 degrees of freedom
+Multiple R-squared:  0.4351,	Adjusted R-squared:  0.4106 
+F-statistic: 17.72 on 1 and 23 DF,  p-value: 0.0003342
+
+                  2.5 %       97.5 %
+(Intercept) 149.2106685 401.68001313
+vuosi        -0.1974843  -0.07200328
+[1] "Error in grep(nomeZ[i], ogg$nameUV$U) : invalid 'pattern' argument\n"
+attr(,"class")
+[1] "try-error"
+attr(,"condition")
+<simpleError in grep(nomeZ[i], ogg$nameUV$U): invalid 'pattern' argument>
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        3        5        6        8 
+117.9992 117.7593 116.3143 108.6793 114.9014 149.0145 
+
+No. of selected breakpoints: 4  (1 breakpoint(s) removed due to small slope diff)
+[1] "Vastemuuttuja: torkein21_hry"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, psi = all.psi, control = control)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2004.646  0.601
+psi2.vuosi 2008.000  0.516
+psi3.vuosi 2011.553  0.694
+psi4.vuosi 2022.796  0.255
+
+Coefficients of the linear terms:
+             Estimate Std. Error t value Pr(>|t|)
+(Intercept) 1208.2453   755.6238   1.599    0.131
+vuosi         -0.5978     0.3774  -1.584    0.134
+U1.vuosi       2.6930     0.6537   4.119       NA
+U2.vuosi      -4.0294     0.9986  -4.035       NA
+U3.vuosi       2.3694     0.8516   2.782       NA
+U4.vuosi      -6.4231     1.6918  -3.797       NA
+
+Residual standard error: 1.194 on 15 degrees of freedom
+Multiple R-Squared: 0.809,  Adjusted R-squared: 0.6944 
+
+Boot restarting based on 6 samples. Last fit:
+Convergence attained in 1 iterations (rel. change -8.167e-06)
+                   2.5 %       97.5 %
+(Intercept) -272.7501255 2689.2407307
+vuosi         -1.3375090    0.1420066
+U1.vuosi       1.4116584    3.9742545
+U2.vuosi      -5.9866554   -2.0722252
+U3.vuosi       0.7002677    4.0385050
+U4.vuosi      -9.7389194   -3.1073041
+psi1.vuosi    -1.1775593    1.1775593
+psi2.vuosi    -1.0111032    1.0111032
+psi3.vuosi    -1.3607575    1.3607575
+psi4.vuosi    -0.5003941    0.5003941
+$vuosi
+           Est. St.Err. t value CI(95%).l CI(95%).u
+slope1 -0.59775 0.37743 -1.5837  -1.40220   0.20673
+slope2  2.09520 0.53377  3.9253   0.95750   3.23290
+slope3 -1.93420 0.84397 -2.2918  -3.73310  -0.13536
+slope4  0.43515 0.11380  3.8238   0.19259   0.67771
+slope5 -5.98800 1.68790 -3.5475  -9.58570  -2.39020
+
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        5 
+205.7727 195.0881 182.8278 184.1423 190.3604 210.4539 
+
+No. of selected breakpoints: 2  
+[1] "Vastemuuttuja: torkein21_tpp"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, psi = startpsi[[i - 1]], 
+    control = control1)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2005.823  0.663
+psi2.vuosi 2016.000  1.178
+
+Coefficients of the linear terms:
+              Estimate Std. Error t value Pr(>|t|)    
+(Intercept) -13005.483   3278.839  -3.966 0.000827 ***
+vuosi            6.540      1.637   3.994 0.000777 ***
+U1.vuosi       -11.144      1.803  -6.182       NA    
+U2.vuosi         5.342      1.162   4.597       NA    
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 6.85 on 19 degrees of freedom
+Multiple R-Squared: 0.8582,  Adjusted R-squared: 0.8209 
+
+Convergence attained in 5 iterations (rel. change 1.0414e-06)
+                    2.5 %       97.5 %
+(Intercept) -19431.889455 -6579.076448
+vuosi            3.330462     9.748843
+U1.vuosi       -14.677690    -7.611285
+U2.vuosi         3.064257     7.619897
+psi1.vuosi      -1.298933     1.298933
+psi2.vuosi      -2.309351     2.309351
+$vuosi
+           Est. St.Err.  t value CI(95%).l CI(95%).u
+slope1  6.53970 1.63740  3.99400    3.1126    9.9667
+slope2 -4.60480 0.75412 -6.10630   -6.1832   -3.0264
+slope3  0.73724 0.88428  0.83372   -1.1136    2.5881
+
+
+> library(pxweb)
+
+> library(dplyr)
+
+> library(stringi)
+
+> library(stringr)
+
+> library(tidyverse)
+
+> library(tidyr)
+
+> library(broom)
+
+> library(dplyr)
+
+> library(zoo)
+
+> library(patchwork)
+
+> library(segmented)
+
+> set.seed(211)
+
+> pxweb_query_list <-
++   list("Vuosi" = c("2009", "2010", "2011", "2012", "2013", "2014",
++                    "2015", "2016", "2017", "2018", "2019" .... [TRUNCATED] 
+
+> # Download data
+> px_data <-
++   pxweb_get(url = "https://statfin.stat.fi/PXWeb/api/v1/fi/StatFin/rpk/statfin_rpk_pxt_13fr.px",
++             query  .... [TRUNCATED] 
+
+> # Convert to data.frame
+> data <- as.data.frame(px_data, column.name.type = "text",
++                       variable.value.type = "text")
+
+> #TÄSSÄ SIIVOTAAN DATAA JA JAETAAN ALUKSI 15-20-vuotiaisiin & 21-29-vuotiaisiin
+> data <- dplyr::select(data, -"Uhrin sukupuoli", -"Hyvinvointialue")
+
+> data <- data %>%
++   rename(tapauskerrat = `Uhrien lukumäärä tapauskertojen mukaan (lkm.)`,
++          nimiklkm = `Uhrien lukumäärä rikosnimikkeiden .... [TRUNCATED] 
+
+> data <- data %>%
++   mutate(rikryhm = ifelse(rikryhm == "12 Henkirikokset  21:1-3 yhteensä", "hr", rikryhm),
++          rikryhm = ifelse(rikryhm ==  .... [TRUNCATED] 
+
+> nuorimmat <- data %>% filter(ika == "15 - 17" | ika == "18 - 20")
+
+> nuorimmat <- nuorimmat %>%
++   group_by(vuosi, rikryhm) %>%
++   summarize(tapauskerrat = sum(tapauskerrat),
++             nimiklkm = sum(nimiklkm),
+ .... [TRUNCATED] 
+
+> nuorimmat$ika <- "15-20"
+
+> vanhemmat <- data %>% filter(ika == "21 - 29")
+
+> vanhemmat <- vanhemmat %>%
++   group_by(vuosi, rikryhm) %>%
++   summarize(tapauskerrat = sum(tapauskerrat),
++             nimiklkm = sum(nimiklkm),
+ .... [TRUNCATED] 
+
+> vanhemmat$ika <- "21-29"
+
+> #LADATAAN IKÄRYHMIEN KOOT TK:N RAJAPINNASTA
+> 
+> pxweb_query_list <-
++   list("Vuosi" = c("2000", "2001", "2002", "2003", "2004", "2005", "2006",
++  .... [TRUNCATED] 
+
+> # Download data
+> px_data <-
++   pxweb_get(url = "https://statfin.stat.fi/PXWeb/api/v1/fi/StatFin/vaerak/statfin_vaerak_pxt_11rd.px",
++              .... [TRUNCATED] 
+
+> # Convert to data.frame
+> vaesto <- as.data.frame(px_data, column.name.type = "text", variable.value.type = "text")
+
+> vaesto <- vaesto %>%
++   pivot_wider(names_from = Vuosi, values_from = `Väestö 31.12.`)
+
+> vaesto_n <- vaesto %>% filter(Ikä  < 21)
+
+> vaesto_n <- vaesto_n %>% summarize(across(starts_with("20"), sum, na.rm = TRUE))
+
+> vaesto_n <- vaesto_n %>% pivot_longer(cols = everything(),
++                                       names_to = "vuosi")
+
+> vaesto_n$ika <- "15-20"
+
+> vaesto_v <- vaesto %>% filter(Ikä > 20)
+
+> vaesto_v <- vaesto_v %>% summarize(across(starts_with("20"), sum, na.rm = TRUE))
+
+> vaesto_v <- vaesto_v %>% pivot_longer(cols = everything(),
++                                       names_to = "vuosi")
+
+> vaesto_v$ika <- "21-29"
+
+> vaesto <- rbind(vaesto_n, vaesto_v)
+
+> #TÄSSÄ YHDISTETÄÄN RIKOSTIEDOT JA TIEDOT IKÄRYHMÄN KOOSTA + LASKETAAN RIKOKSET 100K/KOHDEN
+> 
+> yhdistetty_v <- vanhemmat %>%
++   left_join(vaesto,  .... [TRUNCATED] 
+
+> yhdistetty_v <- yhdistetty_v %>%
++   rowwise() %>%
++   mutate(tapauskerrat21 = tapauskerrat / value * 100000,
++          nimiklkm21 = nimiklkm / val .... [TRUNCATED] 
+
+> yhdistetty_v <- yhdistetty_v %>%
++   pivot_wider(names_from = rikryhm,
++               values_from = c(tapauskerrat21, nimiklkm21, torkein21))
+
+> yhdistetty_v <- yhdistetty_v %>%
++   mutate(across(everything(), as.numeric))
+
+> yhdistetty_v <- yhdistetty_v %>%
++   group_by(vuosi) %>%
++   summarize(across(everything(), max, na.rm = TRUE))
+
+> yhdistetty_v <- dplyr::select(yhdistetty_v, -"ika", -"tapauskerrat", -"nimiklkm", -"torkein", -"value")
+
+> yhdistetty_n <- nuorimmat %>%
++   left_join(vaesto, join_by("ika", "vuosi"))
+
+> yhdistetty_n <- yhdistetty_n %>%
++   rowwise() %>%
++   mutate(tapauskerrat15 = tapauskerrat / value * 100000,
++          nimiklkm15 = nimiklkm / val .... [TRUNCATED] 
+
+> yhdistetty_n <- yhdistetty_n %>%
++   pivot_wider(names_from = rikryhm,
++               values_from = c(tapauskerrat15, nimiklkm15, torkein15))
+
+> yhdistetty_n <- yhdistetty_n %>%
++ 
++   mutate(across(everything(), as.numeric))
+
+> yhdistetty_n <- yhdistetty_n %>%
++   group_by(vuosi) %>%
++   summarize(across(everything(), max, na.rm = TRUE))
+
+> yhdistetty_n <- dplyr::select(yhdistetty_n, -"ika", -"tapauskerrat", -"nimiklkm", -"torkein", -"value")
+
+> #TÄSSÄ VIIMEIN IKÄLUOKKIEN DATAT YHTEEN
+> data <- yhdistetty_n %>%
++   left_join(yhdistetty_v, by = "vuosi")
+
+> rm(vaesto_n, vaesto_v, vanhemmat, nuorimmat, vaesto, yhdistetty_n, yhdistetty_v)
+
+> library(segmented)
+
+> ###UHRIT 15-20
+> #Valitaan analysoitavat muuttujat
+> 
+> dep_vars <- c("tapauskerrat15_hr", "tapauskerrat15_hry", "tapauskerrat15_tpp",
++             .... [TRUNCATED] 
+
+> # Otsikot kuvioon
+> row_titles <- c("Tapauskerrat",
++                 "Rikosnimikkeet",
++                 "Törkeimmän mukaan")
+
+> col_titles <- c("Henkirikokset", "Henkirikoksen yritykset", "Törkeät pahoinpitelyt")
+
+> # Kuvion pohja
+> num_vars <- length(dep_vars)
+
+> ncols <- 3  # Sarakkeita per rivi
+
+> nrows <- ceiling(num_vars / ncols)  # Rivien lukumäärä
+
+> par(mfrow = c(nrows, ncols), mar = c(4, 4, 2, 1), oma = c(2, 7, 4, 2))  # Marginaalit
+
+> # Looppi kaikille valituille muuttujille:
+> for (i in seq_along(dep_vars)) {
++   dv <- dep_vars[i]
++ 
++ 
++   formula_str <- as.formula(paste(dv, "~  ..." ... [TRUNCATED] 
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+(search truncated at 5 breakpoints due to increasing values of BIC) 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        6 
+33.66392 38.02227 43.32404 44.32404 45.32404 46.32404 
+
+No. of selected breakpoints:  0  
+[1] "Vastemuuttuja: tapauskerrat15_hr"
+
+Call:
+lm(formula = formula_str, data = data)
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-1.27201 -0.45801  0.07524  0.35254  0.97377 
+
+Coefficients:
+             Estimate Std. Error t value Pr(>|t|)
+(Intercept)  9.162733  62.461032   0.147    0.885
+vuosi       -0.003908   0.030975  -0.126    0.901
+
+Residual standard error: 0.5711 on 14 degrees of freedom
+Multiple R-squared:  0.001136,	Adjusted R-squared:  -0.07021 
+F-statistic: 0.01592 on 1 and 14 DF,  p-value: 0.9014
+
+                   2.5 %       97.5 %
+(Intercept) -113.2586401 131.58410550
+vuosi         -0.0646179   0.05680144
+[1] "Error in grep(nomeZ[i], ogg$nameUV$U) : invalid 'pattern' argument\n"
+attr(,"class")
+[1] "try-error"
+attr(,"condition")
+<simpleError in grep(nomeZ[i], ogg$nameUV$U): invalid 'pattern' argument>
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+(search truncated at 5 breakpoints due to increasing values of BIC) 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        5 
+106.8217 111.9868 114.0766 118.2699 121.5363 123.7653 
+
+No. of selected breakpoints:  0  
+[1] "Vastemuuttuja: tapauskerrat15_hry"
+
+Call:
+lm(formula = formula_str, data = data)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-5.2092 -2.6175 -1.4533 -0.0738 17.4715 
+
+Coefficients:
+              Estimate Std. Error t value Pr(>|t|)  
+(Intercept) -1191.6118   614.4483  -1.939   0.0729 .
+vuosi           0.5965     0.3047   1.958   0.0705 .
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 5.619 on 14 degrees of freedom
+Multiple R-squared:  0.2149,	Adjusted R-squared:  0.1588 
+F-statistic: 3.832 on 1 and 14 DF,  p-value: 0.07051
+
+                    2.5 %    97.5 %
+(Intercept) -2.395908e+03 12.684703
+vuosi       -7.100099e-04  1.193729
+[1] "Error in grep(nomeZ[i], ogg$nameUV$U) : invalid 'pattern' argument\n"
+attr(,"class")
+[1] "try-error"
+attr(,"condition")
+<simpleError in grep(nomeZ[i], ogg$nameUV$U): invalid 'pattern' argument>
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        5 
+125.1613 116.9490 117.2007 120.7771 121.7771 126.7184 
+
+No. of selected breakpoints: 1  
+[1] "Vastemuuttuja: tapauskerrat15_tpp"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, npsi = 1, control = control1)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2016.217  1.144
+
+Coefficients of the linear terms:
+            Estimate Std. Error t value Pr(>|t|)   
+(Intercept) 7934.403   2174.685   3.649  0.00334 **
+vuosi         -3.912      1.081  -3.620  0.00351 **
+U1.vuosi       6.168      1.528   4.036       NA   
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 7.003 on 12 degrees of freedom
+Multiple R-Squared: 0.6179,  Adjusted R-squared: 0.5224 
+
+Convergence attained in 2 iterations (rel. change 1.9204e-11)
+                  2.5 %       97.5 %
+(Intercept) 3672.097812 12196.707768
+vuosi         -6.030009    -1.794181
+U1.vuosi       3.173112     9.163478
+psi1.vuosi    -2.242611     2.242611
+$vuosi
+          Est. St.Err. t value CI(95%).l CI(95%).u
+slope1 -3.9121  1.0806 -3.6203   -6.2665   -1.5577
+slope2  2.2562  1.0806  2.0879   -0.0982    4.6106
+
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+(search truncated at 5 breakpoints due to increasing values of BIC) 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        6 
+33.66392 38.02227 43.32404 44.32404 45.32404 46.32404 
+
+No. of selected breakpoints:  0  
+[1] "Vastemuuttuja: nimiklkm15_hr"
+
+Call:
+lm(formula = formula_str, data = data)
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-1.27201 -0.45801  0.07524  0.35254  0.97377 
+
+Coefficients:
+             Estimate Std. Error t value Pr(>|t|)
+(Intercept)  9.162733  62.461032   0.147    0.885
+vuosi       -0.003908   0.030975  -0.126    0.901
+
+Residual standard error: 0.5711 on 14 degrees of freedom
+Multiple R-squared:  0.001136,	Adjusted R-squared:  -0.07021 
+F-statistic: 0.01592 on 1 and 14 DF,  p-value: 0.9014
+
+                   2.5 %       97.5 %
+(Intercept) -113.2586401 131.58410550
+vuosi         -0.0646179   0.05680144
+[1] "Error in grep(nomeZ[i], ogg$nameUV$U) : invalid 'pattern' argument\n"
+attr(,"class")
+[1] "try-error"
+attr(,"condition")
+<simpleError in grep(nomeZ[i], ogg$nameUV$U): invalid 'pattern' argument>
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+(search truncated at 5 breakpoints due to increasing values of BIC) 
+
+BIC to detect no. of breakpoints:
+       0        1        2        4        5        6 
+71.58638 72.61371 75.12888 84.45699 91.44794 92.44794 
+
+No. of selected breakpoints:  0  
+[1] "Vastemuuttuja: nimiklkm15_hry"
+
+Call:
+lm(formula = formula_str, data = data)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-3.3923 -0.8497 -0.1756  1.2009  2.8115 
+
+Coefficients:
+             Estimate Std. Error t value Pr(>|t|)    
+(Intercept) -902.2791   204.3062  -4.416 0.000586 ***
+vuosi          0.4519     0.1013   4.461 0.000538 ***
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 1.868 on 14 degrees of freedom
+Multiple R-squared:  0.587,	Adjusted R-squared:  0.5575 
+F-statistic:  19.9 on 1 and 14 DF,  p-value: 0.0005382
+
+                    2.5 %       97.5 %
+(Intercept) -1302.7117659 -501.8463573
+vuosi           0.2533691    0.6505243
+[1] "Error in grep(nomeZ[i], ogg$nameUV$U) : invalid 'pattern' argument\n"
+attr(,"class")
+[1] "try-error"
+attr(,"condition")
+<simpleError in grep(nomeZ[i], ogg$nameUV$U): invalid 'pattern' argument>
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        5 
+123.9390 112.9750 113.7167 118.8789 113.3630 118.8201 
+
+No. of selected breakpoints: 1  
+[1] "Vastemuuttuja: nimiklkm15_tpp"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, npsi = 1, control = control1)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2015.992  1.033
+
+Coefficients of the linear terms:
+            Estimate Std. Error t value Pr(>|t|)   
+(Intercept) 7871.346   2351.805   3.347  0.00581 **
+vuosi         -3.882      1.169  -3.321  0.00610 **
+U1.vuosi       6.251      1.416   4.416       NA   
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 6.185 on 12 degrees of freedom
+Multiple R-Squared: 0.6623,  Adjusted R-squared: 0.5779 
+
+Convergence attained in 2 iterations (rel. change 7.0754e-11)
+                  2.5 %       97.5 %
+(Intercept) 3261.893085 12480.798445
+vuosi         -6.172957    -1.590999
+U1.vuosi       3.476215     9.025242
+psi1.vuosi    -2.025521     2.025521
+$vuosi
+          Est. St.Err. t value CI(95%).l CI(95%).u
+slope1 -3.8820  1.1689 -3.3211  -6.42880   -1.3352
+slope2  2.3688  0.7985  2.9665   0.62896    4.1085
+
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+(search truncated at 5 breakpoints due to increasing values of BIC) 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        6 
+33.66392 38.02227 43.32404 44.32404 45.32404 46.32404 
+
+No. of selected breakpoints:  0  
+[1] "Vastemuuttuja: torkein15_hr"
+
+Call:
+lm(formula = formula_str, data = data)
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-1.27201 -0.45801  0.07524  0.35254  0.97377 
+
+Coefficients:
+             Estimate Std. Error t value Pr(>|t|)
+(Intercept)  9.162733  62.461032   0.147    0.885
+vuosi       -0.003908   0.030975  -0.126    0.901
+
+Residual standard error: 0.5711 on 14 degrees of freedom
+Multiple R-squared:  0.001136,	Adjusted R-squared:  -0.07021 
+F-statistic: 0.01592 on 1 and 14 DF,  p-value: 0.9014
+
+                   2.5 %       97.5 %
+(Intercept) -113.2586401 131.58410550
+vuosi         -0.0646179   0.05680144
+[1] "Error in grep(nomeZ[i], ogg$nameUV$U) : invalid 'pattern' argument\n"
+attr(,"class")
+[1] "try-error"
+attr(,"condition")
+<simpleError in grep(nomeZ[i], ogg$nameUV$U): invalid 'pattern' argument>
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+(search truncated at 5 breakpoints due to increasing values of BIC) 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        5        7 
+65.53472 68.18408 68.97985 74.54695 85.30088 86.30088 
+
+No. of selected breakpoints:  0  
+[1] "Vastemuuttuja: torkein15_hry"
+
+Call:
+lm(formula = formula_str, data = data)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-2.7376 -0.6828 -0.3115  0.8010  2.9118 
+
+Coefficients:
+              Estimate Std. Error t value Pr(>|t|)   
+(Intercept) -685.66928  169.10255  -4.055  0.00118 **
+vuosi          0.34394    0.08386   4.101  0.00108 **
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 1.546 on 14 degrees of freedom
+Multiple R-squared:  0.5458,	Adjusted R-squared:  0.5133 
+F-statistic: 16.82 on 1 and 14 DF,  p-value: 0.001079
+
+                    2.5 %       97.5 %
+(Intercept) -1017.1041953 -354.2343625
+vuosi           0.1795757    0.5082978
+[1] "Error in grep(nomeZ[i], ogg$nameUV$U) : invalid 'pattern' argument\n"
+attr(,"class")
+[1] "try-error"
+attr(,"condition")
+<simpleError in grep(nomeZ[i], ogg$nameUV$U): invalid 'pattern' argument>
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        5 
+120.8329 110.9864 108.3350 116.1466 114.9759 118.6030 
+
+No. of selected breakpoints: 2  
+[1] "Vastemuuttuja: torkein15_tpp"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, psi = start.ora, control = control1)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2011.081  0.781
+psi2.vuosi 2014.972  0.893
+
+Coefficients of the linear terms:
+             Estimate Std. Error t value Pr(>|t|)
+(Intercept) -7863.471   7004.758  -1.123    0.288
+vuosi           3.944      3.485   1.132    0.284
+U1.vuosi      -11.099      4.928  -2.252       NA
+U2.vuosi        8.947      3.527   2.537       NA
+
+Residual standard error: 4.928 on 10 degrees of freedom
+Multiple R-Squared: 0.7988,  Adjusted R-squared: 0.6982 
+
+Convergence attained in 3 iterations (rel. change 8.2995e-10)
+                    2.5 %      97.5 %
+(Intercept) -21592.544169 5865.601710
+vuosi           -2.886399   10.774369
+U1.vuosi       -20.758435   -1.439192
+U2.vuosi         2.034305   15.859667
+psi1.vuosi      -1.530372    1.530372
+psi2.vuosi      -1.749679    1.749679
+$vuosi
+          Est. St.Err. t value CI(95%).l CI(95%).u
+slope1  3.9440 3.48500  1.1317  -3.82100  11.70900
+slope2 -7.1548 3.48500 -2.0531 -14.92000   0.61013
+slope3  1.7922 0.54261  3.3029   0.58315   3.00120
+
+
+> ###UHRIT 21-29
+> #Valitaan analysoitavat muuttujat
+> 
+> dep_vars <- c("tapauskerrat21_hr", "tapauskerrat21_hry", "tapauskerrat21_tpp",
++             .... [TRUNCATED] 
+
+> # Otsikot kuvioon
+> row_titles <- c("Tapauskerrat",
++                 "Rikosnimikkeet",
++                 "Törkeimmän mukaan")
+
+> col_titles <- c("Henkirikokset", "Henkirikoksen yritykset", "Törkeät pahoinpitelyt")
+
+> # Kuvion pohja
+> num_vars <- length(dep_vars)
+
+> ncols <- 3  # Sarakkeita per rivi
+
+> nrows <- ceiling(num_vars / ncols)  # Rivien lukumäärä
+
+> par(mfrow = c(nrows, ncols), mar = c(4, 4, 2, 1), oma = c(2, 7, 4, 2))  # Marginaalit
+
+> # Looppi kaikille valituille muuttujille:
+> for (i in seq_along(dep_vars)) {
++   dv <- dep_vars[i]
++ 
++ 
++   formula_str <- as.formula(paste(dv, "~  ..." ... [TRUNCATED] 
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        4        5        6 
+39.19776 32.71658 35.30511 28.78319 29.78319 30.78319 
+
+No. of selected breakpoints: 2  (2 breakpoint(s) removed due to small slope diff)
+[1] "Vastemuuttuja: tapauskerrat21_hr"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, psi = all.psi, control = control)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2016.901  0.682
+psi2.vuosi 2019.569  0.894
+
+Coefficients of the linear terms:
+             Estimate Std. Error t value Pr(>|t|)  
+(Intercept) 443.38449  152.18068   2.914   0.0155 *
+vuosi        -0.21939    0.07562  -2.901   0.0158 *
+U1.vuosi      0.88712    0.35468   2.501       NA  
+U2.vuosi     -0.84087    0.37960  -2.215       NA  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 0.4901 on 10 degrees of freedom
+Multiple R-Squared: 0.6279,  Adjusted R-squared: 0.4419 
+
+Boot restarting based on 6 samples. Last fit:
+Convergence attained in 4 iterations (rel. change 2.2705e-13)
+                  2.5 %       97.5 %
+(Intercept) 145.1158364 741.65315142
+vuosi        -0.3675977  -0.07118181
+U1.vuosi      0.1919584   1.58227204
+U2.vuosi     -1.5848637  -0.09686789
+psi1.vuosi   -1.3361757   1.33617573
+psi2.vuosi   -1.7531772   1.75317724
+$vuosi
+           Est.  St.Err. t value CI(95%).l CI(95%).u
+slope1 -0.21939 0.075618 -2.9013  -0.38788 -0.050903
+slope2  0.66773 0.346520  1.9269  -0.10438  1.439800
+slope3 -0.17314 0.154970 -1.1172  -0.51844  0.172150
+
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        5        6 
+105.8252 107.8955 106.9553 111.3076 115.6370 116.6370 
+
+No. of selected breakpoints:  0  
+[1] "Vastemuuttuja: tapauskerrat21_hry"
+
+Call:
+lm(formula = formula_str, data = data)
+
+Residuals:
+    Min      1Q  Median      3Q     Max 
+-6.1985 -3.0200 -0.8855  1.7315 16.1294 
+
+Coefficients:
+             Estimate Std. Error t value Pr(>|t|)
+(Intercept) -783.1979   595.6090  -1.315    0.210
+vuosi          0.3964     0.2954   1.342    0.201
+
+Residual standard error: 5.446 on 14 degrees of freedom
+Multiple R-squared:  0.114,	Adjusted R-squared:  0.05072 
+F-statistic: 1.801 on 1 and 14 DF,  p-value: 0.2009
+
+                    2.5 %      97.5 %
+(Intercept) -1950.5700854 384.1742311
+vuosi          -0.1824692   0.9753479
+[1] "Error in grep(nomeZ[i], ogg$nameUV$U) : invalid 'pattern' argument\n"
+attr(,"class")
+[1] "try-error"
+attr(,"condition")
+<simpleError in grep(nomeZ[i], ogg$nameUV$U): invalid 'pattern' argument>
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        5 
+115.3385 111.7567 116.2675 112.0619 113.0619 114.0619 
+
+No. of selected breakpoints: 1  
+[1] "Vastemuuttuja: tapauskerrat21_tpp"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, npsi = 1, control = control1)
+
+Estimated Break-Point(s):
+            Est. St.Err
+psi1.vuosi 2015   1.44
+
+Coefficients of the linear terms:
+            Estimate Std. Error t value Pr(>|t|)   
+(Intercept) 7165.082   2263.950   3.165  0.00815 **
+vuosi         -3.520      1.125  -3.129  0.00872 **
+U1.vuosi       4.117      1.363   3.021       NA   
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 5.954 on 12 degrees of freedom
+Multiple R-Squared: 0.5829,  Adjusted R-squared: 0.4786 
+
+Convergence attained in 2 iterations (rel. change 6.1324e-06)
+                  2.5 %       97.5 %
+(Intercept) 2727.822121 11602.341847
+vuosi         -5.725700    -1.314907
+U1.vuosi       1.446180     6.787916
+psi1.vuosi    -2.823251     2.823251
+$vuosi
+           Est. St.Err.  t value CI(95%).l CI(95%).u
+slope1 -3.52030 1.12520 -3.12850   -5.9720   -1.0687
+slope2  0.59674 0.76867  0.77633   -1.0781    2.2715
+
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        4        5        6 
+39.19776 32.71658 35.30511 28.78319 29.78319 30.78319 
+
+No. of selected breakpoints: 2  (2 breakpoint(s) removed due to small slope diff)
+[1] "Vastemuuttuja: nimiklkm21_hr"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, psi = all.psi, control = control)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2016.901  0.682
+psi2.vuosi 2019.569  0.894
+
+Coefficients of the linear terms:
+             Estimate Std. Error t value Pr(>|t|)  
+(Intercept) 443.38449  152.18068   2.914   0.0155 *
+vuosi        -0.21939    0.07562  -2.901   0.0158 *
+U1.vuosi      0.88712    0.35468   2.501       NA  
+U2.vuosi     -0.84087    0.37960  -2.215       NA  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 0.4901 on 10 degrees of freedom
+Multiple R-Squared: 0.6279,  Adjusted R-squared: 0.4419 
+
+Boot restarting based on 6 samples. Last fit:
+Convergence attained in 4 iterations (rel. change 2.2705e-13)
+                  2.5 %       97.5 %
+(Intercept) 145.1158364 741.65315142
+vuosi        -0.3675977  -0.07118181
+U1.vuosi      0.1919584   1.58227204
+U2.vuosi     -1.5848637  -0.09686789
+psi1.vuosi   -1.3361757   1.33617573
+psi2.vuosi   -1.7531772   1.75317724
+$vuosi
+           Est.  St.Err. t value CI(95%).l CI(95%).u
+slope1 -0.21939 0.075618 -2.9013  -0.38788 -0.050903
+slope2  0.66773 0.346520  1.9269  -0.10438  1.439800
+slope3 -0.17314 0.154970 -1.1172  -0.51844  0.172150
+
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        6 
+82.53763 86.23409 80.09394 81.09394 82.72536 83.72536 
+
+No. of selected breakpoints: 2  
+[1] "Vastemuuttuja: nimiklkm21_hry"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, psi = startpsi[[i - 1]], 
+    control = control1)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2014.264  1.167
+psi2.vuosi 2019.773  0.967
+
+Coefficients of the linear terms:
+             Estimate Std. Error t value Pr(>|t|)
+(Intercept) 1476.6627   980.4690   1.506    0.163
+vuosi         -0.7278     0.4874  -1.493    0.166
+U1.vuosi       2.1758     0.8083   2.692       NA
+U2.vuosi      -2.7206     0.9119  -2.983       NA
+
+Residual standard error: 2.039 on 10 degrees of freedom
+Multiple R-Squared: 0.6406,  Adjusted R-squared: 0.4609 
+
+Convergence attained in 3 iterations (rel. change 1.3666e-11)
+                   2.5 %       97.5 %
+(Intercept) -445.0211777 3398.3466107
+vuosi         -1.6831946    0.2275021
+U1.vuosi       0.5915765    3.7601085
+U2.vuosi      -4.5079275   -0.9333413
+psi1.vuosi    -2.2880476    2.2880476
+psi2.vuosi    -1.8954043    1.8954043
+$vuosi
+           Est. St.Err. t value CI(95%).l CI(95%).u
+slope1 -0.72785 0.48743 -1.4932 -1.813900   0.35822
+slope2  1.44800 0.64481  2.2456  0.011267   2.88470
+slope3 -1.27260 0.64481 -1.9737 -2.709400   0.16409
+
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        5        7 
+113.8293 109.7487 114.3730 109.9805 110.9805 111.9805 
+
+No. of selected breakpoints: 1  
+[1] "Vastemuuttuja: nimiklkm21_tpp"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, npsi = 1, control = control1)
+
+Estimated Break-Point(s):
+            Est. St.Err
+psi1.vuosi 2015  1.391
+
+Coefficients of the linear terms:
+            Estimate Std. Error t value Pr(>|t|)   
+(Intercept) 6981.106   2126.251   3.283  0.00654 **
+vuosi         -3.429      1.057  -3.245  0.00702 **
+U1.vuosi       4.005      1.280   3.129       NA   
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 5.592 on 12 degrees of freedom
+Multiple R-Squared: 0.6011,  Adjusted R-squared: 0.5013 
+
+Convergence attained in 2 iterations (rel. change 4.2174e-06)
+                  2.5 %       97.5 %
+(Intercept) 2813.730306 11148.482409
+vuosi         -5.500617    -1.358098
+U1.vuosi       1.496590     6.513430
+psi1.vuosi    -2.725710     2.725710
+$vuosi
+           Est. St.Err.  t value CI(95%).l CI(95%).u
+slope1 -3.42940 1.05680 -3.24510  -5.73190   -1.1268
+slope2  0.57565 0.72192  0.79739  -0.99728    2.1486
+
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        4        5        6 
+39.19776 32.71658 35.30511 28.78319 29.78319 30.78319 
+
+No. of selected breakpoints: 2  (2 breakpoint(s) removed due to small slope diff)
+[1] "Vastemuuttuja: torkein21_hr"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, psi = all.psi, control = control)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2016.901  0.682
+psi2.vuosi 2019.569  0.894
+
+Coefficients of the linear terms:
+             Estimate Std. Error t value Pr(>|t|)  
+(Intercept) 443.38449  152.18068   2.914   0.0155 *
+vuosi        -0.21939    0.07562  -2.901   0.0158 *
+U1.vuosi      0.88712    0.35468   2.501       NA  
+U2.vuosi     -0.84087    0.37960  -2.215       NA  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 0.4901 on 10 degrees of freedom
+Multiple R-Squared: 0.6279,  Adjusted R-squared: 0.4419 
+
+Boot restarting based on 6 samples. Last fit:
+Convergence attained in 4 iterations (rel. change 2.2705e-13)
+                  2.5 %       97.5 %
+(Intercept) 145.1158364 741.65315142
+vuosi        -0.3675977  -0.07118181
+U1.vuosi      0.1919584   1.58227204
+U2.vuosi     -1.5848637  -0.09686789
+psi1.vuosi   -1.3361757   1.33617573
+psi2.vuosi   -1.7531772   1.75317724
+$vuosi
+           Est.  St.Err. t value CI(95%).l CI(95%).u
+slope1 -0.21939 0.075618 -2.9013  -0.38788 -0.050903
+slope2  0.66773 0.346520  1.9269  -0.10438  1.439800
+slope3 -0.17314 0.154970 -1.1172  -0.51844  0.172150
+
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        6 
+76.45709 76.04856 73.71755 79.26272 81.12618 82.12618 
+
+No. of selected breakpoints: 2  
+[1] "Vastemuuttuja: torkein21_hry"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, psi = startpsi[[i - 1]], 
+    control = control1)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2014.478  1.438
+psi2.vuosi 2019.835  0.879
+
+Coefficients of the linear terms:
+            Estimate Std. Error t value Pr(>|t|)
+(Intercept) 706.0752   803.3325   0.879    0.400
+vuosi        -0.3457     0.3994  -0.866    0.407
+U1.vuosi      1.4277     0.6623   2.156       NA
+U2.vuosi     -2.4577     0.7472  -3.289       NA
+
+Residual standard error: 1.671 on 10 degrees of freedom
+Multiple R-Squared: 0.6126,  Adjusted R-squared: 0.419 
+
+Convergence attained in 3 iterations (rel. change 1.5601e-12)
+                   2.5 %       97.5 %
+(Intercept) -868.4276094 2280.5780457
+vuosi         -1.1284310    0.4370697
+U1.vuosi       0.1296776    2.7257667
+U2.vuosi      -3.9221168   -0.9933333
+psi1.vuosi    -2.8177714    2.8177714
+psi2.vuosi    -1.7230007    1.7230007
+$vuosi
+           Est. St.Err.  t value CI(95%).l CI(95%).u
+slope1 -0.34568 0.39937 -0.86557 -1.235500   0.54417
+slope2  1.08200 0.52832  2.04810 -0.095121   2.25920
+slope3 -1.37570 0.52832 -2.60390 -2.552800  -0.19852
+
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        6 
+111.8712 108.2900 112.9202 108.7847 113.0342 114.0342 
+
+No. of selected breakpoints: 1  
+[1] "Vastemuuttuja: torkein21_tpp"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, npsi = 1, control = control1)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2015.379  1.478
+
+Coefficients of the linear terms:
+            Estimate Std. Error t value Pr(>|t|)  
+(Intercept) 6177.428   2031.501   3.041   0.0103 *
+vuosi         -3.034      1.010  -3.005   0.0110 *
+U1.vuosi       3.648      1.223   2.983       NA  
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 5.343 on 12 degrees of freedom
+Multiple R-Squared: 0.5918,  Adjusted R-squared: 0.4898 
+
+Convergence attained in 3 iterations (rel. change 3.3455e-12)
+                  2.5 %       97.5 %
+(Intercept) 2195.759288 10159.096252
+vuosi         -5.012681    -1.054762
+U1.vuosi       1.250877     6.044155
+psi1.vuosi    -2.896073     2.896073
+$vuosi
+           Est. St.Err.  t value CI(95%).l CI(95%).u
+slope1 -3.03370 1.00970 -3.00460  -5.23370  -0.83379
+slope2  0.61379 0.68975  0.88988  -0.88904   2.11660
+
+
+> library(pxweb)
+
+> library(dplyr)
+
+> library(stringi)
+
+> library(stringr)
+
+> library(tidyverse)
+
+> library(tidyr)
+
+> library(broom)
+
+> library(dplyr)
+
+> library(zoo)
+
+> library(patchwork)
+
+> library(segmented)
+
+> ####AINEISTON HAKEMINEN JA MUODOSTAMINEN
+> 
+> 
+> set.seed(211)
+
+> pxweb_query_list <-
++   list("Tapaturmat ja väkivalta (ulkoisten syiden luokitus)" = c("098-109"),
++        "Ikä" = c("15-19", "20-24", "25-29"),
++  .... [TRUNCATED] 
+
+> # Download data
+> px_data <-
++   pxweb_get(url = "https://statfin.stat.fi/PXWeb/api/v1/fi/StatFin/ksyyt/statfin_ksyyt_pxt_11b2.px",
++             qu .... [TRUNCATED] 
+
+> # Convert to data.frame
+> data <- as.data.frame(px_data, column.name.type = "text",
++                       variable.value.type = "text")
+
+> #TÄSSÄ SIIVOTAAN DATAA JA JAETAAN ALUKSI 15-20-vuotiaisiin & 21-29-vuotiaisiin
+> data <- dplyr::select(data, -`Sukupuoli`)
+
+> data <- data %>%
++   rename(kuolleet = `Tapaturmiin ja väkivaltaan kuolleet yhteensä`,
++          ika = `Ikä`,
++          vuosi = Vuosi)
+
+> nuorimmat <- data %>% filter(ika == "15 - 19")
+
+> nuorimmat$ika <- "15-19"
+
+> vanhemmat <- data %>% filter(ika == "20 - 24" | ika == "25 - 29")
+
+> vanhemmat <- vanhemmat %>%
++   group_by(vuosi) %>%
++   summarize(kuolleet_yht = sum(kuolleet))
+
+> vanhemmat$ika <- "20-29"
+
+> #LADATAAN IKÄRYHMIEN KOOT TK:N RAJAPINNASTA
+> 
+> pxweb_query_list <-
++   list("Vuosi" = c("2000", "2001", "2002", "2003", "2004", "2005", "2006",
++  .... [TRUNCATED] 
+
+> # Download data
+> px_data <-
++   pxweb_get(url = "https://statfin.stat.fi/PXWeb/api/v1/fi/StatFin/vaerak/statfin_vaerak_pxt_11rd.px",
++              .... [TRUNCATED] 
+
+> # Convert to data.frame
+> vaesto <- as.data.frame(px_data, column.name.type = "text",
++                         variable.value.type = "text")
+
+> vaesto <- vaesto %>%
++   pivot_wider(names_from = Vuosi, values_from = `Väestö 31.12.`)
+
+> vaesto_n <- vaesto %>% filter(Ikä  < 20)
+
+> vaesto_n <- vaesto_n %>% summarize(across(starts_with("20"), sum, na.rm = TRUE))
+
+> vaesto_n <- vaesto_n %>% pivot_longer(cols = everything(),
++                                       names_to = "vuosi")
+
+> vaesto_n$ika <- "15-19"
+
+> vaesto_v <- vaesto %>% filter(Ikä > 19)
+
+> vaesto_v <- vaesto_v %>% summarize(across(starts_with("20"), sum, na.rm = TRUE))
+
+> vaesto_v <- vaesto_v %>% pivot_longer(cols = everything(),
++                                       names_to = "vuosi")
+
+> vaesto_v$ika <- "20-29"
+
+> vaesto <- rbind(vaesto_n, vaesto_v)
+
+> #YHDISTETÄÄN RIKOSTIEDOT JA TIEDOT IKÄRYHMÄN KOOSTA + LASKETAAN RIKOKSET 100K/KOHDEN
+> 
+> yhdistetty_v <- vanhemmat %>%
++   left_join(vaesto, join_b .... [TRUNCATED] 
+
+> yhdistetty_v <- yhdistetty_v %>%
++   rowwise() %>%
++   mutate(kuolleet20 = kuolleet_yht / value * 100000)
+
+> yhdistetty_v <- yhdistetty_v %>%
++   group_by(vuosi) %>%
++   summarize(across(everything(), max, na.rm = TRUE))
+
+> yhdistetty_v <- dplyr::select(yhdistetty_v, -`kuolleet_yht`, -`ika`, -`value`)
+
+> yhdistetty_n <- nuorimmat %>%
++   left_join(vaesto, join_by("ika", "vuosi"))
+
+> yhdistetty_n <- yhdistetty_n %>%
++   rowwise() %>%
++   mutate(kuolleet15 = kuolleet / value * 100000)
+
+> yhdistetty_n <- dplyr::select(yhdistetty_n, -`Tapaturmat ja väkivalta (ulkoisten syiden luokitus)`,
++                               -`ika`, -`kuolle .... [TRUNCATED] 
+
+> #TÄSSÄ VIIMEIN IKÄLUOKKIEN DATAT YHTEEN
+> data <- yhdistetty_n %>%
++   left_join(yhdistetty_v, by = "vuosi")
+
+> data <- data %>%
++   mutate(across(everything(), as.numeric))
+
+> rm(vaesto_n, vaesto_v, vanhemmat, nuorimmat, vaesto, yhdistetty_n, yhdistetty_v)
+
+> ##ANALYYSI
+> 
+> #Valitaan analysoitavat muuttujat
+> 
+> dep_vars <- c("kuolleet15", "kuolleet20")
+
+> # Otsikot kuvioon
+> 
+> 
+> col_titles <- c("15–19-vuotiaat", "20–29-vuotiaat")
+
+> # Kuvion pohja
+> num_vars <- length(dep_vars)
+
+> ncols <- 2  # Sarakkeita per rivi
+
+> nrows <- 1  # Rivien lukumäärä
+
+> par(mfrow = c(nrows, ncols), mar = c(7, 1, 7, 1), oma = c(2, 2, 2, 2))  # Marginaalit
+
+> # Looppi kaikille valituille muuttujille:
+> for (i in seq_along(dep_vars)) {
++   dv <- dep_vars[i]
++ 
++ 
++   formula_str <- as.formula(paste(dv, "~  ..." ... [TRUNCATED] 
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+(search truncated at 5 breakpoints due to increasing values of BIC) 
+
+BIC to detect no. of breakpoints:
+        0         1         3         4         6         8 
+ 67.01540  72.99196  73.99196  88.39809  89.39809 105.69678 
+
+No. of selected breakpoints:  0  
+[1] "Vastemuuttuja: kuolleet15"
+
+Call:
+lm(formula = formula_str, data = data)
+
+Residuals:
+     Min       1Q   Median       3Q      Max 
+-1.22439 -0.69477 -0.09531  0.43446  1.72420 
+
+Coefficients:
+            Estimate Std. Error t value Pr(>|t|)
+(Intercept) 44.22698   44.33431   0.998    0.329
+vuosi       -0.02139    0.02203  -0.971    0.342
+
+Residual standard error: 0.7945 on 23 degrees of freedom
+Multiple R-squared:  0.03937,	Adjusted R-squared:  -0.002393 
+F-statistic: 0.9427 on 1 and 23 DF,  p-value: 0.3417
+
+                   2.5 %      97.5 %
+(Intercept) -42.66667467 131.1206426
+vuosi        -0.06458175   0.0217931
+[1] "Error in grep(nomeZ[i], ogg$nameUV$U) : invalid 'pattern' argument\n"
+attr(,"class")
+[1] "try-error"
+attr(,"condition")
+<simpleError in grep(nomeZ[i], ogg$nameUV$U): invalid 'pattern' argument>
+No. of breakpoints: 2 .. 3 .. 4 .. 5 .. 
+
+BIC to detect no. of breakpoints:
+       0        1        2        3        4        5 
+59.94805 59.21500 59.74776 57.53631 62.61377 67.27582 
+
+No. of selected breakpoints: 1  (2 breakpoint(s) removed due to small slope diff)
+[1] "Vastemuuttuja: kuolleet20"
+
+	***Regression Model with Segmented Relationship(s)***
+
+Call: 
+segmented.lm(obj = olm, seg.Z = seg.Z, psi = all.psi, control = control1)
+
+Estimated Break-Point(s):
+                Est. St.Err
+psi1.vuosi 2016.169  2.545
+
+Coefficients of the linear terms:
+             Estimate Std. Error t value Pr(>|t|)   
+(Intercept) 233.23559   62.17260   3.751  0.00118 **
+vuosi        -0.11508    0.03096  -3.717  0.00128 **
+U1.vuosi      0.21892    0.10135   2.160       NA   
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Residual standard error: 0.6254 on 21 degrees of freedom
+Multiple R-Squared: 0.4659,  Adjusted R-squared: 0.3896 
+
+Convergence attained in 2 iterations (rel. change 1.8113e-11)
+                   2.5 %      97.5 %
+(Intercept) 111.37952869 355.0916427
+vuosi        -0.17576381  -0.0543936
+U1.vuosi      0.02028621   0.4175635
+psi1.vuosi   -4.98900058   4.9890006
+$vuosi
+           Est.  St.Err. t value CI(95%).l CI(95%).u
+slope1 -0.11508 0.030962 -3.7167 -0.179470 -0.050689
+slope2  0.10385 0.096503  1.0761 -0.096842  0.304530
+
