@@ -15,7 +15,7 @@
 - `kuolleet_full.R` – koodi hakee aineiston väkivallan uhreina kuolleista nuorista henkilöistä ja tekee segementoituun regressioanalyysin perustuvan tarkastelun
 - `output.txt` – R-tuloste, jossa koodit ajettu em. järjestyksessä (tulokset, joihin artikkeli perustuu)
 - `session_info.txt` – tiedot R-istunnosta (käyttöjärjestelmä, R-versio, pakettien versiot), josta em. tuloste peräisin
-
+- `renv.lock` – lockfile (versiotiedot)
 
 
 ## Huomioita
@@ -37,6 +37,7 @@ Tarkastelu perustuu Tilastokeskuksen avoimiin tilastotietokantoihin (aineistot h
 - `kuolleet_full.R` – script retrieves data on young persons who died as victims of violence and performs an analysis based on segmented regression  
 - `output.txt` – R output file showing the results obtained by running the scripts above in this order (the results on which the article is based)  
 - `session_info.txt` – information on the R session (operating system, R version, package versions) from which the above output was generated
+- `renv.lock` – lockfile (version records)
 
 ## Notes
 The analysis examines trends in serious youth violence using several indicators.
