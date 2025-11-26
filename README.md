@@ -8,6 +8,8 @@
 
 **Koodin laatineet** Maiju Tanskanen (maiju.tanskanen@helsinki.fi) & Aaro Beuker (aaro.beuker@helsinki.fi)
 
+***Koodiin voi viitata näin:*** Tanskanen, M., & Beuker, A. (2025). Nuorten vakavan väkivallan kehitys: Tilastokeskuksen avoimien tilastotietokantojen analyysi / Trends in serious youth violence: Analyzing Statistics Finland's open statistical databases (v.1.0.0). Zenodo. https://doi.org/10.5281/zenodo.17727855 
+
 
 ## Tiedostot
 - `tekijat_full.R` – koodi hakee aineiston rikoksista epäillyistä nuorista henkilöistä ja tekee segementoituun regressioanalyysin perustuvan tarkastelun
@@ -26,10 +28,11 @@ Tarkastelu perustuu Tilastokeskuksen avoimiin tilastotietokantoihin (aineistot h
 
 # IN ENGLISH:
 
-# R Code for "Nuorten vakavan väkivallan kehitystrendit eri osoittimien valossa. Toistettava menetelmä avoimien tilastotietokantojen analyysiin"
+# R Code for "Trends in Serious Youth Violence in Light of Different Indicators: A Reproducible Method for Analyzing Open Statistical Databases"
 
 **Authors of the article** Maiju Tanskanen, Aaro Beuker, Karoliina Suonpää, Kimmo Haapakangas & Janne Kivivuori
 **Authors of the code** Maiju Tanskanen (maiju.tanskanen@helsinki.fi) & Aaro Beuker (aaro.beuker@helsinki.fi)
+***You can cite this code as follows:*** Tanskanen, M., & Beuker, A. (2025). Nuorten vakavan väkivallan kehitys: Tilastokeskuksen avoimien tilastotietokantojen analyysi / Trends in serious youth violence: Analyzing Statistics Finland's open statistical databases (v.1.0.0). Zenodo. https://doi.org/10.5281/zenodo.17727855 
 
 ## Files
 - `tekijat_full.R` – script retrieves data on young persons suspected of crimes and performs an analysis based on segmented regression  
